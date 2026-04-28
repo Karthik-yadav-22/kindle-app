@@ -171,7 +171,7 @@
       // Check role
       const { data: { user } } = await supabaseClient.auth.getUser();
       const { data: profile } = await supabaseClient.from('profiles').select('role').eq('id', user.id).single();
-      window.location.href = profile?.role === 'admin' ? 'pages/admin.html' : 'pages/dashboard.html';
+      window.location.href = profile?.role === 'admin' ? '/admin' : '/dashboard';
     });
 
     // ── Sign Up ──────────────────────────────────────────────
@@ -199,7 +199,7 @@
       e.preventDefault();
       const email = document.getElementById('siEmail').value.trim();
       if (!email) return showError('Enter your email first.');
-      await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/pages/dashboard.html' });
+      await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/dashboard' });
       showError('');
       alert('Password reset email sent!');
     });
@@ -209,7 +209,7 @@
       const { data: { user } } = await supabaseClient.auth.getUser();
       if (user) {
         const { data: profile } = await supabaseClient.from('profiles').select('role').eq('id', user.id).single();
-        window.location.href = profile?.role === 'admin' ? 'pages/admin.html' : 'pages/dashboard.html';
+        window.location.href = profile?.role === 'admin' ? '/admin' : '/dashboard';
       }
     })();
   </script>

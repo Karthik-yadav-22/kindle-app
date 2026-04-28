@@ -1,8 +1,9 @@
 {
   "rewrites": [
+    { "source": "/", "destination": "/index.html" },
     { "source": "/dashboard", "destination": "/pages/dashboard.html" },
-    { "source": "/reader", "destination": "/pages/reader.html" },
-    { "source": "/admin", "destination": "/pages/admin.html" }
+    { "source": "/admin", "destination": "/pages/admin.html" },
+    { "source": "/reader", "destination": "/upload/reader.html" }
   ],
   "headers": [
     {

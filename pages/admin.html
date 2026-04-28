@@ -199,123 +199,6 @@ function setupNav() {
   });
 }
 
-// ── Overview ───────────────────────────────────────────────
-async function loadOverview() {
-  const [{ count: booksCount }, { count: reqCount }, { count: usersCount }, { count: pendingCount }] = await Promise.all([
-    supabaseClient.from('books').select('*', { count: 'exact', head: true }).eq('status','approved'),
-    supabaseClient.from('book_requests').select('*', { count: 'exact', head: true }),
-    supabaseClient.from('profiles').select('*', { count: 'exact', head: true }),
-    supabaseClient.from('book_requests').select('*', { count: 'exact', head: true }).eq('status','pending'),
-  ]);
-
-  document.getElementById('statsGrid').innerHTML = [
-    { n: booksCount || 0, l: 'Published Books', icon: '📚' },
-    { n: pendingCount || 0, l: 'Pending Requests', icon: '📥' },
-    { n: reqCount || 0, l: 'Total Requests', icon: '📋' },
-    { n: usersCount || 0, l: 'Registered Users', icon: '👥' },
-  ].map(s => `<div class="stat-card"><div style="font-size:1.5rem;">${s.icon}</div><div class="stat-number">${s.n}</div><div class="stat-label">${s.l}</div></div>`).join('');
-
-  const { data: recent } = await supabaseClient.from('book_requests').select('*').order('created_at', { ascending: false }).limit(5);
-  document.getElementById('recentRequests').innerHTML = renderRequestsTable(recent || []);
-}
-
-// ── Requests ───────────────────────────────────────────────
-async function loadRequests() {
-  const { data } = await supabaseClient.from('book_requests').select('*').order('created_at', { ascending: false });
-  document.getElementById('requestsTable').innerHTML = renderRequestsTable(data || []);
-}
-
-function renderRequestsTable(requests) {
-  if (!requests.length) return `<div class="empty-state"><div class="empty-state-icon">📥</div><h3>No requests yet</h3></div>`;
-  return `<div class="admin-table-wrapper"><table class="admin-table">
-    <thead><tr><th>Title</th><th>Author</th><th>Submitted By</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
-    <tbody>${requests.map(r => `<tr>
-      <td><strong>${r.title}</strong></td>
-      <td>${r.author}</td>
-      <td style="font-size:.8rem;">${r.requester_email || '—'}</td>
-      <td style="font-size:.8rem;">${new Date(r.created_at).toLocaleDateString()}</td>
-      <td><span class="status-badge ${r.status}">${r.status}</span></td>
-      <td>${r.status === 'pending' ? `<button class="btn btn-outline btn-sm" onclick="openReview('${r.id}')">Review</button>` : '—'}</td>
-    </tr>`).join('')}</tbody>
-  </table></div>`;
-}
-
-window.openReview = async (id) => {
-  const { data: req } = await supabaseClient.from('book_requests').select('*').eq('id', id).single();
-  if (!req) return;
-  currentReviewId = id;
-  document.getElementById('reviewModalTitle').textContent = `Review: "${req.title}"`;
-  document.getElementById('reviewModalBody').innerHTML = `
-    <div style="display:grid;grid-template-columns:120px 1fr;gap:1rem;align-items:start;">
-      ${req.cover_url ? `<img src="${req.cover_url}" style="width:120px;border-radius:8px;"/>` : `<div style="width:120px;height:180px;background:var(--bg-sidebar);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:2rem;">📖</div>`}
-      <div>
-        <div style="font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:700;margin-bottom:.4rem;">${req.title}</div>
-        <div style="color:var(--text-muted);margin-bottom:.75rem;">by ${req.author}</div>
-        <div style="font-size:.82rem;color:var(--text-secondary);margin-bottom:.75rem;">${req.description || 'No description.'}</div>
-        <div style="font-size:.8rem;"><strong>Genres:</strong> ${(req.genre||[]).join(', ') || '—'}</div>
-        <div style="font-size:.8rem;margin-top:.4rem;"><strong>Submitted by:</strong> ${req.requester_email}</div>
-        ${req.pdf_url ? `<a href="${req.pdf_url}" target="_blank" class="btn btn-ghost btn-sm" style="margin-top:.75rem;">📄 View PDF</a>` : ''}
-      </div>
-    </div>`;
-  openModal('reviewModal');
-};
-
-async function approveRequest() {
-  if (!currentReviewId) return;
-  const { data: req } = await supabaseClient.from('book_requests').select('*').eq('id', currentReviewId).single();
-  if (!req) return;
-
-  // Insert into books
-  const { error } = await supabaseClient.from('books').insert({
-    title: req.title, author: req.author, description: req.description,
-    genre: req.genre, cover_url: req.cover_url, pdf_url: req.pdf_url,
-    uploaded_by: req.requested_by, approved_by: adminUser.id, status: 'approved'
-  });
-  if (error) { showToast('Failed to approve: ' + error.message, 'error'); return; }
-
-  await supabaseClient.from('book_requests').update({ status: 'approved', updated_at: new Date().toISOString() }).eq('id', currentReviewId);
-  closeModal('reviewModal');
-  showToast(`"${req.title}" approved and published! ✅`, 'success');
-  await loadOverview();
-}
-
-async function rejectRequest() {
-  if (!currentReviewId) return;
-  const reason = prompt('Reason for rejection (optional):') || '';
-  await supabaseClient.from('book_requests').update({ status: 'rejected', admin_note: reason, updated_at: new Date().toISOString() }).eq('id', currentReviewId);
-  closeModal('reviewModal');
-  showToast('Request rejected.', 'info');
-  await loadOverview();
-}
-
-// ── All Books ──────────────────────────────────────────────
-async function loadAllBooks() {
-  const { data } = await supabaseClient.from('books').select('*').order('created_at', { ascending: false });
-  const books = data || [];
-  document.getElementById('booksTotalCount').textContent = `${books.length} books`;
-  document.getElementById('booksTable').innerHTML = books.length ? `
-    <div class="admin-table-wrapper"><table class="admin-table">
-      <thead><tr><th>Cover</th><th>Title</th><th>Author</th><th>Genre</th><th>Status</th><th>Actions</th></tr></thead>
-      <tbody>${books.map(b => `<tr>
-        <td>${b.cover_url ? `<img src="${b.cover_url}" style="width:36px;height:52px;object-fit:cover;border-radius:4px;"/>` : '📖'}</td>
-        <td><strong>${b.title}</strong></td>
-        <td>${b.author}</td>
-        <td style="font-size:.78rem;">${(b.genre||[]).slice(0,2).join(', ')}</td>
-        <td><span class="status-badge ${b.status}">${b.status}</span></td>
-        <td style="display:flex;gap:.4rem;">
-          <a href="/reader?id=${b.id}" class="btn btn-ghost btn-sm" target="_blank">📖 Read</a>
-          <button class="btn btn-ghost btn-sm" onclick="openDelete('${b.id}')" style="color:#e74c3c;">🗑</button>
-        </td>
-      </tr>`).join('')}</tbody>
-    </table></div>` : `<div class="empty-state"><div class="empty-state-icon">📚</div><h3>No books yet</h3></div>`;
-}
-
-window.openDelete = (id) => {
-  currentDeleteId = id;
-  openModal('deleteModal');
-};
-
-// ── Admin Upload ───────────────────────────────────────────
 function renderAdminGenres() {
   const container = document.getElementById('adminGenreChecks');
   GENRES.forEach(g => {
@@ -326,7 +209,221 @@ function renderAdminGenres() {
   });
 }
 
-async function adminUpload() {
+// ── Overview ───────────────────────────────────────────────
+async function loadOverview() {
+  const [reqs, books, users] = await Promise.all([
+    supabaseClient.from('book_requests').select('*').order('created_at', { ascending: false }).limit(5),
+    supabaseClient.from('books').select('id', { count: 'exact', head: true }),
+    supabaseClient.from('profiles').select('id', { count: 'exact', head: true })
+  ]);
+
+  const pendingReqs = reqs.data?.filter(r => r.status === 'pending').length || 0;
+
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="admin-stat-card">
+      <div class="admin-stat-value">${pendingReqs}</div>
+      <div class="admin-stat-label">Pending Requests</div>
+    </div>
+    <div class="admin-stat-card">
+      <div class="admin-stat-value">${books.count || 0}</div>
+      <div class="admin-stat-label">Total Books</div>
+    </div>
+    <div class="admin-stat-card">
+      <div class="admin-stat-value">${users.count || 0}</div>
+      <div class="admin-stat-label">Total Users</div>
+    </div>
+  `;
+
+  const recent = reqs.data || [];
+  document.getElementById('recentRequests').innerHTML = recent.length ? `
+    <div class="admin-table-wrapper">
+      <table class="admin-table">
+        <thead><tr><th>Title</th><th>Author</th><th>Requested By</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody>${recent.map(r => `
+          <tr>
+            <td>${r.title}</td>
+            <td>${r.author}</td>
+            <td>${r.requester_email || '-'}</td>
+            <td><span class="status-badge ${r.status}">${r.status}</span></td>
+            <td>${new Date(r.created_at).toLocaleDateString()}</td>
+          </tr>
+        `).join('')}</tbody>
+      </table>
+    </div>
+  ` : '<p style="color:var(--text-muted)">No requests yet.</p>';
+}
+
+// ── Requests ────────────────────────────────────────────────
+async function loadRequests() {
+  const { data } = await supabaseClient.from('book_requests').select('*').order('created_at', { ascending: false });
+  const container = document.getElementById('requestsTable');
+  
+  if (!data?.length) {
+    container.innerHTML = '<p style="color:var(--text-muted)">No requests yet.</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="admin-table-wrapper">
+      <table class="admin-table">
+        <thead><tr><th>Title</th><th>Author</th><th>Genre</th><th>Requested By</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+        <tbody>${data.map(r => `
+          <tr>
+            <td>${r.title}</td>
+            <td>${r.author}</td>
+            <td>${(r.genre || []).join(', ')}</td>
+            <td>${r.requester_email || '-'}</td>
+            <td><span class="status-badge ${r.status}">${r.status}</span></td>
+            <td>${new Date(r.created_at).toLocaleDateString()}</td>
+            <td>
+              ${r.status === 'pending' ? `<button class="btn btn-primary btn-sm" onclick="openReview('${r.id}')">Review</button>` : '-'}
+            </td>
+          </tr>
+        `).join('')}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+window.openReview = async function(id) {
+  currentReviewId = id;
+  const { data } = await supabaseClient.from('book_requests').select('*').eq('id', id).single();
+  if (!data) return;
+
+  document.getElementById('reviewModalTitle').textContent = `Review: ${data.title}`;
+  document.getElementById('reviewModalBody').innerHTML = `
+    <p><strong>Author:</strong> ${data.author}</p>
+    <p><strong>Genre:</strong> ${(data.genre || []).join(', ')}</p>
+    <p><strong>Description:</strong> ${data.description || 'N/A'}</p>
+    <p><strong>Requested by:</strong> ${data.requester_email}</p>
+    <p><strong>Date:</strong> ${new Date(data.created_at).toLocaleString()}</p>
+    ${data.pdf_url ? `<p><a href="${data.pdf_url}" target="_blank">📄 View PDF</a></p>` : ''}
+    ${data.cover_url ? `<p><a href="${data.cover_url}" target="_blank">🖼 View Cover</a></p>` : ''}
+  `;
+  openModal('reviewModal');
+};
+
+document.getElementById('approveBtn').addEventListener('click', async () => {
+  if (!currentReviewId) return;
+  const { data } = await supabaseClient.from('book_requests').select('*').eq('id', currentReviewId).single();
+  if (!data) return;
+
+  // Move to books
+  await supabaseClient.from('books').insert({
+    title: data.title,
+    author: data.author,
+    description: data.description,
+    genre: data.genre,
+    pdf_url: data.pdf_url,
+    cover_url: data.cover_url,
+    published_year: data.published_year,
+    status: 'approved',
+    uploaded_by: data.requested_by
+  });
+
+  // Update request status
+  await supabaseClient.from('book_requests').update({ status: 'approved' }).eq('id', currentReviewId);
+  
+  closeModal('reviewModal');
+  showToast('Book approved and published!', 'success');
+  loadRequests();
+  loadOverview();
+});
+
+document.getElementById('rejectBtn').addEventListener('click', async () => {
+  if (!currentReviewId) return;
+  await supabaseClient.from('book_requests').update({ status: 'rejected' }).eq('id', currentReviewId);
+  closeModal('reviewModal');
+  showToast('Request rejected', 'info');
+  loadRequests();
+  loadOverview();
+});
+
+// ── All Books ──────────────────────────────────────────────
+async function loadAllBooks() {
+  const { data } = await supabaseClient.from('books').select('*').order('created_at', { ascending: false });
+  const container = document.getElementById('booksTable');
+  document.getElementById('booksTotalCount').textContent = `${data?.length || 0} books`;
+
+  if (!data?.length) {
+    container.innerHTML = '<p style="color:var(--text-muted)">No books yet.</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="admin-table-wrapper">
+      <table class="admin-table">
+        <thead><tr><th>Title</th><th>Author</th><th>Genre</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+        <tbody>${data.map(b => `
+          <tr>
+            <td>${b.title}</td>
+            <td>${b.author}</td>
+            <td>${(b.genre || []).join(', ')}</td>
+            <td><span class="status-badge ${b.status}">${b.status}</span></td>
+            <td>${new Date(b.created_at).toLocaleDateString()}</td>
+            <td>
+              <button class="btn btn-ghost btn-sm" onclick="window.open('/reader?id=${b.id}', '_blank')">Read</button>
+              <button class="btn btn-ghost btn-sm" style="color:#e74c3c;border-color:#e74c3c;" onclick="confirmDeleteBook('${b.id}')">Delete</button>
+            </td>
+          </tr>
+        `).join('')}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+window.confirmDeleteBook = function(id) {
+  currentDeleteId = id;
+  openModal('deleteModal');
+};
+
+document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
+  if (!currentDeleteId) return;
+  await supabaseClient.from('books').delete().eq('id', currentDeleteId);
+  closeModal('deleteModal');
+  showToast('Book deleted', 'success');
+  loadAllBooks();
+  loadOverview();
+});
+
+// ── Users ──────────────────────────────────────────────────
+async function loadUsers() {
+  const { data } = await supabaseClient.from('profiles').select('*').order('created_at', { ascending: false });
+  const container = document.getElementById('usersTable');
+
+  if (!data?.length) {
+    container.innerHTML = '<p style="color:var(--text-muted)">No users yet.</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="admin-table-wrapper">
+      <table class="admin-table">
+        <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead>
+        <tbody>${data.map(p => `
+          <tr>
+            <td>${p.username || '-'}</td>
+            <td>${p.email || '-'}</td>
+            <td><span class="status-badge ${p.role === 'admin' ? 'admin' : 'user'}">${p.role || 'user'}</span></td>
+            <td>${new Date(p.created_at).toLocaleDateString()}</td>
+            <td>
+              ${p.role !== 'admin' ? `<button class="btn btn-ghost btn-sm" onclick="makeAdmin('${p.id}')">Make Admin</button>` : '-'}
+            </td>
+          </tr>
+        `).join('')}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+window.makeAdmin = async function(id) {
+  await supabaseClient.from('profiles').update({ role: 'admin' }).eq('id', id);
+  showToast('User promoted to admin', 'success');
+  loadUsers();
+};
+
+// ── Admin Upload ───────────────────────────────────────────
+document.getElementById('adminUploadBtn').addEventListener('click', async () => {
   const title = document.getElementById('adTitle').value.trim();
   const author = document.getElementById('adAuthor').value.trim();
   const desc = document.getElementById('adDesc').value.trim();
@@ -335,93 +432,57 @@ async function adminUpload() {
   const coverFile = document.getElementById('adCoverFile').files[0];
   const genres = [...document.querySelectorAll('#adminGenreChecks input:checked')].map(i => i.value);
 
-  if (!title || !author || !pdfFile) { showToast('Title, author, and PDF are required', 'error'); return; }
+  if (!title || !author || !pdfFile) { showToast('Title, author and PDF are required', 'error'); return; }
 
   const btn = document.getElementById('adminUploadBtn');
   btn.disabled = true; btn.textContent = 'Uploading…';
 
   try {
-    const pdfPath = `admin/${Date.now()}_${pdfFile.name}`;
-    const { error: pdfErr } = await supabaseClient.storage.from('books-pdf').upload(pdfPath, pdfFile);
-    if (pdfErr) throw pdfErr;
+    const pdfPath = `books/${Date.now()}_${pdfFile.name}`;
+    await supabaseClient.storage.from('books-pdf').upload(pdfPath, pdfFile);
     const { data: { publicUrl: pdfUrl } } = supabaseClient.storage.from('books-pdf').getPublicUrl(pdfPath);
 
     let coverUrl = null;
     if (coverFile) {
-      const coverPath = `admin/${Date.now()}_${coverFile.name}`;
+      const coverPath = `covers/${Date.now()}_${coverFile.name}`;
       await supabaseClient.storage.from('book-covers').upload(coverPath, coverFile);
       const { data: { publicUrl } } = supabaseClient.storage.from('book-covers').getPublicUrl(coverPath);
       coverUrl = publicUrl;
     }
 
-    const { error: bookErr } = await supabaseClient.from('books').insert({
-      title, author, description: desc, genre: genres,
-      pdf_url: pdfUrl, cover_url: coverUrl,
-      uploaded_by: adminUser.id, approved_by: adminUser.id,
-      published_year: year ? parseInt(year) : null,
-      status: 'approved'
+    await supabaseClient.from('books').insert({
+      title, author, description: desc, published_year: year ? parseInt(year) : null,
+      genre: genres, pdf_url: pdfUrl, cover_url: coverUrl,
+      status: 'approved', uploaded_by: adminUser.id
     });
-    if (bookErr) throw bookErr;
 
-    showToast(`"${title}" uploaded and published! 🎉`, 'success');
+    showToast('Book uploaded successfully!', 'success');
     ['adTitle','adAuthor','adDesc','adYear'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('adPdfFile').value = '';
     document.getElementById('adCoverFile').value = '';
     document.getElementById('adPdfFileName').textContent = '';
     document.getElementById('adCoverFileName').textContent = '';
     document.querySelectorAll('#adminGenreChecks input').forEach(i => i.checked = false);
+    loadAllBooks();
+    loadOverview();
   } catch(err) {
     showToast(err.message || 'Upload failed', 'error');
   } finally {
     btn.disabled = false; btn.textContent = 'Upload Book';
   }
-}
-
-// ── Users ──────────────────────────────────────────────────
-async function loadUsers() {
-  const { data } = await supabaseClient.from('profiles').select('*').order('created_at', { ascending: false });
-  const users = data || [];
-  document.getElementById('usersTable').innerHTML = users.length ? `
-    <div class="admin-table-wrapper"><table class="admin-table">
-      <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead>
-      <tbody>${users.map(u => `<tr>
-        <td><strong>${u.username || '—'}</strong></td>
-        <td style="font-size:.82rem;">${u.email}</td>
-        <td><span class="status-badge ${u.role === 'admin' ? 'approved' : 'pending'}">${u.role}</span></td>
-        <td style="font-size:.8rem;">${new Date(u.created_at).toLocaleDateString()}</td>
-        <td>${u.id !== adminUser.id ? `<button class="btn btn-ghost btn-sm" onclick="toggleRole('${u.id}','${u.role}')">${u.role === 'admin' ? 'Revoke Admin' : 'Make Admin'}</button>` : '(you)'}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>` : `<div class="empty-state"><div class="empty-state-icon">👥</div><h3>No users</h3></div>`;
-}
-
-window.toggleRole = async (userId, currentRole) => {
-  const newRole = currentRole === 'admin' ? 'user' : 'admin';
-  if (!confirm(`Change role to "${newRole}"?`)) return;
-  await supabaseClient.from('profiles').update({ role: newRole }).eq('id', userId);
-  showToast('Role updated', 'success');
-  await loadUsers();
-};
+});
 
 // ── Events ─────────────────────────────────────────────────
 function setupEvents() {
   document.getElementById('signOutBtn').addEventListener('click', signOut);
-  document.getElementById('approveBtn').addEventListener('click', approveRequest);
-  document.getElementById('rejectBtn').addEventListener('click', rejectRequest);
-  document.getElementById('adminUploadBtn').addEventListener('click', adminUpload);
-  document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
-    if (!currentDeleteId) return;
-    await supabaseClient.from('books').delete().eq('id', currentDeleteId);
-    closeModal('deleteModal');
-    showToast('Book deleted', 'info');
-    await loadAllBooks();
-  });
 
-  // File names
-  document.getElementById('adPdfFile').addEventListener('change', e => {
-    document.getElementById('adPdfFileName').textContent = e.target.files[0]?.name || '';
-  });
-  document.getElementById('adCoverFile').addEventListener('change', e => {
-    document.getElementById('adCoverFileName').textContent = e.target.files[0]?.name || '';
+  // File name display
+  ['adPdfFile', 'adCoverFile'].forEach(id => {
+    const input = document.getElementById(id);
+    const nameEl = document.getElementById(id + 'Name');
+    input?.addEventListener('change', () => {
+      if (nameEl) nameEl.textContent = input.files[0]?.name || '';
+    });
   });
 }
 
