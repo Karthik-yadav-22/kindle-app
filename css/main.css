@@ -1147,14 +1147,14 @@ img { max-width: 100%; }
 
 /* Stats cards */
 .admin-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-.stat-card {
+.stat-card, .admin-stat-card {
   background: var(--bg-card);
   border: 1.5px solid var(--border);
   border-radius: 12px;
   padding: 1.25rem;
 }
-.stat-number { font-family: 'Playfair Display', serif; font-size: 2rem; font-weight: 800; color: var(--accent); }
-.stat-label { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem; }
+.stat-number, .admin-stat-value { font-family: 'Playfair Display', serif; font-size: 2rem; font-weight: 800; color: var(--accent); }
+.stat-label, .admin-stat-label { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem; }
 
 /* ============================================================
    WISHLIST / SIDEBAR PANELS

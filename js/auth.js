@@ -29,7 +29,7 @@ export async function requireAdmin() {
   if (!user) return null;
   const profile = await getUserProfile(user.id);
   if (profile?.role !== 'admin') {
-    window.location.href = '/pages/dashboard.html';
+    window.location.href = '/index.html';
     return null;
   }
   return { user, profile };

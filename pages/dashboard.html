@@ -277,7 +277,7 @@ function renderBooks(books) {
 }
 
 function openReader(bookId) {
-  window.location.href = `reader.html?id=${bookId}`;
+  window.location.href = `/reader?id=${bookId}`;
 }
 
 // ── Wishlist ───────────────────────────────────────────────
@@ -314,7 +314,7 @@ async function renderWishlistPanel() {
         <div class="wishlist-title">${b.title}</div>
         <div class="wishlist-author">by ${b.author}</div>
         <div style="margin-top:.5rem;display:flex;gap:.5rem;">
-          <button class="btn btn-primary btn-sm" onclick="window.location.href='reader.html?id=${b.id}'">Read</button>
+          <button class="btn btn-primary btn-sm" onclick="window.location.href='/reader?id=${b.id}'">Read</button>
           <button class="btn btn-ghost btn-sm" onclick="toggleWishlistGlobal('${b.id}')">Remove</button>
         </div>
       </div>
