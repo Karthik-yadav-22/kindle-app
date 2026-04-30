@@ -185,17 +185,30 @@ async function init() {
   document.getElementById('bookTitle').textContent = book.title;
   document.title = `${book.title} — PageTurner`;
 
+  const resolvedPdfUrl = await resolveBookPdfUrl(book.pdf_url);
+  if (!resolvedPdfUrl) {
+    showToast('Unable to access book PDF', 'error');
+    return;
+  }
+
   // Load saved progress
   const { data: prog } = await supabaseClient.from('reading_progress')
     .select('current_page,total_pages').eq('user_id', currentUser.id).eq('book_id', bookId).single();
   if (prog) currentPage = prog.current_page || 1;
 
   // Load PDF
-  await loadPDF(book.pdf_url);
+  await loadPDF(resolvedPdfUrl);
   setupEvents();
   await loadAllNotes();
   await loadAllBookmarks();
   renderProgressTab();
+}
+
+async function resolveBookPdfUrl(path) {
+  if (!path) return null;
+  if (path.startsWith('http')) return path;
+  const { data, error } = await supabaseClient.storage.from('books-pdf').createSignedUrl(path, 60);
+  return error ? null : data?.signedUrl || null;
 }
 
 async function loadPDF(url) {
