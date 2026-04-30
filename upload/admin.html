@@ -27,7 +27,7 @@
         <button class="theme-btn" data-theme="dark">🌙 Dark</button>
         <button class="theme-btn" data-theme="vintage">📜 Vintage</button>
       </div>
-      <a href="/dashboard" class="admin-nav-item">← User View</a>
+      <a href="../pages/dashboard.html" class="admin-nav-item">← User View</a>
       <button class="admin-nav-item" id="signOutBtn">🚪 Sign Out</button>
     </div>
   </aside>
@@ -303,7 +303,7 @@ async function loadAllBooks() {
         <td style="font-size:.78rem;">${(b.genre||[]).slice(0,2).join(', ')}</td>
         <td><span class="status-badge ${b.status}">${b.status}</span></td>
         <td style="display:flex;gap:.4rem;">
-          <a href="/reader?id=${b.id}" class="btn btn-ghost btn-sm" target="_blank">📖 Read</a>
+          <a href="reader.html?id=${b.id}" class="btn btn-ghost btn-sm" target="_blank">📖 Read</a>
           <button class="btn btn-ghost btn-sm" onclick="openDelete('${b.id}')" style="color:#e74c3c;">🗑</button>
         </td>
       </tr>`).join('')}</tbody>
